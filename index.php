@@ -9,8 +9,9 @@ function readDirect(){
 }
 
 function readSql(){
-  $cmd="/opt/bin/sqlite3 /volume1/public/calibre/metadata.db 'select path from books;'";
+  $cmd="/usr/syno/bin/sqlite3 /volume1/public/calibre/metadata.db 'select path from books;'";
   $f=popen($cmd,"r");
+  #echo "reading books with $cmd<br>";
   if ($f) {
     $books=array();
     while ($l=fgets($f)){
@@ -19,6 +20,9 @@ function readSql(){
     $rt=pclose($f);
     sort($books);
     return $books;
+  }
+  else {
+    echo "unable to run command<br>";
   }
   return array();
 }
@@ -58,8 +62,18 @@ if (isset($_REQUEST['filter'])) $addons.='&filter='.urlencode($_REQUEST['filter'
 if (isset($_REQUEST['direct'])) $addons.='&direct='.urlencode($_REQUEST['direct']);
 $BASEDIR="/volume1/public/calibre";
 $FORMATS=array('azw3','azw','mobi','epub','pdf');
+$dl=null;
+$sendContentDisposition=1;
+$str=preg_replace('/\?.*/','',$_SERVER['REQUEST_URI']);
+if (!preg_match('/index.php$/',$str)){
+  $dl=base64_decode(preg_replace('/\.epub$/','',preg_replace('/.*index.php./','',$str))).".epub";
+  $sendContentDisposition=0;
+}
 if (isset($_REQUEST['download'])) {
-  $name=$BASEDIR."/".$_REQUEST['download'];
+  $dl=$_REQUEST['download'];
+}
+if ($dl){
+  $name=$BASEDIR."/".$dl;
   //echo "name=$name<br/>";
   if (file_exists($name)) {
     $shortname=preg_replace('#.*/#','',$name);
@@ -71,11 +85,14 @@ if (isset($_REQUEST['download'])) {
         header("Content-Type: application/x-mobipocket-ebook");
       }
       else {
+        if (preg_match('#epub$#',$shortname)) {
+          header("Content-Type: application/x-mobipocket-ebook");
+        } else 
         header("Content-Type: application/octet-string");
       }
     }
     header("Content-Length: " . filesize($name));
-    header('Content-Disposition: attachment; filename="'.$shortname.'"');
+    if ($sendContentDisposition) header('Content-Disposition: attachment; filename="'.$shortname.'"');
     $h=fopen($name,"rb");
     fpassthru($h);
     exit(0);
@@ -128,7 +145,7 @@ body {
 }
 #booklist li{
 	list-style: none;
-	background-color: rgb(162, 162, 147);
+	background-color: rgb(124, 124, 112);
 	margin-bottom: 3px;
 	margin-top: 6px;
 	padding-bottom: 3px;
@@ -148,6 +165,28 @@ body {
 <body>
 <?php
 $serverbase="http://".$_SERVER['SERVER_ADDR']."/".$_SERVER['PHP_SELF']."?download=";
+if (isset($_REQUEST['view'])){
+?>
+  <script type="text/javascript" src="/scripts/epub.js"></script>
+  <script type="text/javascript" src="/scripts/zip.js"></script>
+  <script type="text/javascript" src="/scripts/zip-fs.js"></script>
+  <script type="text/javascript" src="/scripts/deflate.js"></script>
+  <script type="text/javascript" src="/scripts/zip-ext.js"></script>
+  <script type="text/javascript">
+    EPUBJS.filePath = "/scripts/";
+  </script>
+<div onclick="Book.prevPage();">‹</div>
+<div id="area"></div>
+<div onclick="Book.nextPage();">›</div>
+<script>
+    var Book = ePub({ bookPath : "<?php echo "http://".$_SERVER['SERVER_ADDR']."/".preg_replace('/\?.*/','',$_SERVER['REQUEST_URI'])."/".base64_encode(preg_replace('/\.epub$/','',$_REQUEST['view'])).".epub";?>",  restore: true });
+    Book.renderTo("area");
+</script>
+</body>
+</html>
+ <?php 
+exit(0);
+}
 if (isset($_REQUEST['bookdetails'])) {
   $book=$_REQUEST['bookdetails'];
   $format=$_REQUEST['format'];
@@ -217,7 +256,11 @@ if (isset($_REQUEST['book'])) {
   foreach ($FORMATS as $fmt) {
     if ($availableBooks[$fmt]) {
       $dlurl=$book."/".$availableBooks[$fmt];
-      echo '<tr class="formatlist "><td><a class="formatlink " href="?download='.urlencode($dlurl).'">'.$fmt.'</a></td><td><a class="formatlink" href="?bookdetails='.urlencode($book).'&format='.urlencode($fmt).'&dlurl='.urlencode($dlurl).$addons.'">Druckansicht</a></td></tr>';
+      echo '<tr class="formatlist "><td><a class="formatlink " href="?download='.urlencode($dlurl).'">'.$fmt.'</a></td><td><a class="formatlink" href="?bookdetails='.urlencode($book).'&format='.urlencode($fmt).'&dlurl='.urlencode($dlurl).$addons.'">Druckansicht</a></td>';
+      #if ($fmt == "epub"){
+      #  echo '<td><a class="formatlink" href="?view='.urlencode($dlurl).'">Lesen</a></td>';
+      #}
+      echo '</tr>';
     }
   }
   echo '</table>';
